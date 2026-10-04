@@ -45,13 +45,14 @@ test("temporada: cadeia de taxas e líquido (cálculo manual)", () => {
   perto(r.base_gestao, 18396);
   perto(r.taxa_gestao, 4599); // 25% sobre o que resta após o Airbnb
   perto(r.custos_comuns, 7200); // (500 + 100) x 12, proprietário paga tudo
-  perto(r.custo_limpeza, 0); // plano Seazone inclui limpeza e lavanderia
-  perto(r.liquido_anos_seguintes, 6232); // 18396 - 4599 - 365 - 7200
+  perto(r.custo_limpeza, 0); // plano Seazone inclui limpeza, lavanderia e consumíveis
+  perto(r.custo_consumiveis, 0);
+  perto(r.liquido_anos_seguintes, 6597); // 18396 - 4599 - 7200
   perto(r.implantacao, 3799);
-  perto(r.liquido_primeiro_ano, 6232 - 3799);
+  perto(r.liquido_primeiro_ano, 6597 - 3799);
 });
 
-test("autogestão: limpeza e lavanderia são custo do proprietário", () => {
+test("autogestão: limpeza, lavanderia e consumíveis são custo do proprietário", () => {
   const r = calcTemporada({
     ...base,
     temporada: { ...base.temporada, plano: "autogestao", taxa_gestao_pct: 0, lavanderia_por_estadia: 10 },
@@ -82,7 +83,7 @@ test("comparativo e breakeven", () => {
   const t = calcTemporada(base);
   const d = calcTradicional(base);
   const c = comparar(t, d);
-  perto(c.diferenca_anual, 6232 - 16516);
+  perto(c.diferenca_anual, 6597 - 16516);
   assert.equal(c.viabilidade, "NÃO-VIÁVEL");
   assert.equal(c.breakeven_meses, null);
 
@@ -115,9 +116,9 @@ test("comparação de planos: autogestão > essencial > premium", () => {
 test("cenários: conservador, central e otimista (cálculo manual)", () => {
   const faixa = { diaria_min: 80, diaria_max: 120, ocupacao_min_pct: 40, ocupacao_max_pct: 60 };
   const [cons, cen, oti] = calcCenarios(base, faixa);
-  perto(cons.temporada.liquido_anos_seguintes, 1706); // 80 x 40%: 12264 - 3066 - 292 - 7200
-  perto(cen.temporada.liquido_anos_seguintes, 6232); // 100 x 50%, os valores informados
-  perto(oti.temporada.liquido_anos_seguintes, 11677.8); // 120 x 60%: 25754,4 - 6438,6 - 438 - 7200
+  perto(cons.temporada.liquido_anos_seguintes, 1998); // 80 x 40%: 12264 - 3066 - 7200
+  perto(cen.temporada.liquido_anos_seguintes, 6597); // 100 x 50%, os valores informados
+  perto(oti.temporada.liquido_anos_seguintes, 12115.8); // 120 x 60%: 25754,4 - 6438,6 - 7200
   perto(cons.tradicional.liquido_anual, 16516); // o tradicional é o mesmo nos três
   assert.equal(oti.comparativo.viabilidade, "NÃO-VIÁVEL");
 });

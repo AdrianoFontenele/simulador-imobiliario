@@ -10,21 +10,21 @@ export type Plano = {
   adesao: number;
   gestao_contas: boolean;
   seguro: boolean;
-  /** Limpeza e lavanderia já estão incluídas na taxa do plano (não são custo à parte). */
-  limpeza_lavanderia_incluidas: boolean;
+  /** Limpeza, lavanderia e consumíveis já estão incluídos na taxa do plano (não são custo à parte). */
+  operacao_incluida: boolean;
 };
 
 // Fonte: proposta comercial Seazone (valores cheios, sem promoção) e minuta de contrato
 // (cláusula 3.3: taxa sobre reservas já descontadas as taxas das plataformas).
 // Gestão de contas e seguro EasyCover estão embutidos na taxa quando incluídos no plano
 // (cláusulas 3.5 e 3.6). O valor das contas em si continua sendo do proprietário.
-// Limpeza e lavanderia estão incluídas na taxa de todos os planos Seazone (informado pelo dono).
+// Limpeza, lavanderia e consumíveis estão incluídos na taxa de todos os planos Seazone (informado pelo dono).
 export const PLANOS: Record<PlanoId, Plano> = {
-  autogestao: { nome: "Autogestão (sem Seazone)", taxa_pct: 0, adesao: 0, gestao_contas: false, seguro: false, limpeza_lavanderia_incluidas: false },
-  essencial: { nome: "Essencial", taxa_pct: 25, adesao: 1499, gestao_contas: false, seguro: false, limpeza_lavanderia_incluidas: true },
-  plus: { nome: "Plus", taxa_pct: 27, adesao: 1499, gestao_contas: true, seguro: false, limpeza_lavanderia_incluidas: true },
-  safe: { nome: "Safe", taxa_pct: 27, adesao: 1499, gestao_contas: false, seguro: true, limpeza_lavanderia_incluidas: true },
-  premium: { nome: "Premium", taxa_pct: 28, adesao: 1499, gestao_contas: true, seguro: true, limpeza_lavanderia_incluidas: true },
+  autogestao: { nome: "Autogestão (sem Seazone)", taxa_pct: 0, adesao: 0, gestao_contas: false, seguro: false, operacao_incluida: false },
+  essencial: { nome: "Essencial", taxa_pct: 25, adesao: 1499, gestao_contas: false, seguro: false, operacao_incluida: true },
+  plus: { nome: "Plus", taxa_pct: 27, adesao: 1499, gestao_contas: true, seguro: false, operacao_incluida: true },
+  safe: { nome: "Safe", taxa_pct: 27, adesao: 1499, gestao_contas: false, seguro: true, operacao_incluida: true },
+  premium: { nome: "Premium", taxa_pct: 28, adesao: 1499, gestao_contas: true, seguro: true, operacao_incluida: true },
 };
 
 export const PLANO_IDS = Object.keys(PLANOS) as PlanoId[];
