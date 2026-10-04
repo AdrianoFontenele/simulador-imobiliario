@@ -79,3 +79,21 @@ test("com 3 comparáveis de temporada com preço próximo da média, não há av
 test("o prompt orienta valor null quando o preço não é visível", () => {
   assert.match(montarPrompt("Asa Norte 912, Brasília/DF", "Kit 30m2 mobiliada"), /use null\. Nunca estime/);
 });
+
+test("avisa quando o especialista estima mobília para imóvel já mobiliado", () => {
+  const r = lerResposta(
+    JSON.stringify({ ...resposta, implantacao: { mobilia_e_enxoval_estimado: 18000 } }),
+  );
+  assert.ok(r.ok);
+  assert.match(r.avisos.join("\n"), /Implantação estimada.*18000 mesmo com o imóvel mobiliado/);
+});
+
+test("sem estimativa de implantação (null), não há aviso de implantação", () => {
+  const r = lerResposta(JSON.stringify({ ...resposta, implantacao: { mobilia_e_enxoval_estimado: null } }));
+  assert.ok(r.ok);
+  assert.doesNotMatch(r.avisos.join("\n"), /Implantação estimada/);
+});
+
+test("o prompt só pede mobília quando o imóvel não é mobiliado", () => {
+  assert.match(montarPrompt("Asa Norte 912, Brasília/DF", "Kit 30m2"), /SOMENTE se o imóvel NÃO é mobiliado/);
+});

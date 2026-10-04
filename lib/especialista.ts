@@ -124,7 +124,7 @@ REGRAS DE QUALIDADE
 - Studio, kitnet ou quarto-sala: quartos = 0.
 - Em cada comparável, "valor" é a diária (temporada) ou o aluguel mensal (residencial) que você LEU no anúncio. Se o preço não estiver visível, use null. Nunca estime nem arredonde o preço de um anúncio.
 - Para "pago_por_no_tradicional", baseie-se no texto dos anúncios de aluguel ("+ condomínio, IPTU" indica inquilino). Se não houver evidência, use "inquilino" (prática de mercado) e avise em "alertas".
-- "mobilia_e_enxoval_estimado": use null quando não houver base. Não use 0 para significar "não sei".
+- "mobilia_e_enxoval_estimado": preencha SOMENTE se o imóvel NÃO é mobiliado, com o custo de mobiliar com padrão médio (cama, sofá, TV, geladeira, fogão, micro-ondas, ar-condicionado e utensílios), informando a faixa e a fonte dos preços em "premissas". Se o imóvel já é mobiliado, use null: o enxoval (roupa de cama e banho) é cotado pelo gestor e você não tem base para estimá-lo. Nunca invente valor sem base e não use 0 para significar "não sei".
 - Nunca invente dado. Se não houver base, use null e explique em "alertas". Não escreva percentuais ou números sem sentido nos textos.
 - Seja conservador: na dúvida, prefira o cenário que reduz a receita.
 - Cite no máximo 8 comparáveis, todos reais e verificáveis (com URL). Não fabrique anúncios, nomes ou links. O tipo do comparável deve corresponder à fonte real (um anúncio de portal imobiliário NÃO é "airbnb").
@@ -248,6 +248,12 @@ export function lerResposta(texto: string):
   }
   if (d.confianca === "alta" && t.base_ocupacao !== "boletim_oficial") {
     avisos.push("Confiança 'alta' sem boletim oficial: inconsistente com as regras do prompt.");
+  }
+  const impl = d.implantacao.mobilia_e_enxoval_estimado;
+  if (impl !== null && impl > 0) {
+    avisos.push(
+      `Implantação estimada pelo especialista em R$ ${impl}${d.perfil_imovel.mobiliado === true ? " mesmo com o imóvel mobiliado" : ""}: não é cotação, confira ou ajuste antes de usar.`,
+    );
   }
   const faltando = ITENS_CUSTO.filter((i) => d.custos_comuns_estimados.find((c) => c.item === i)?.valor_mensal == null);
   if (faltando.length > 0) {
