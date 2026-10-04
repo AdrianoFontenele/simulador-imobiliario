@@ -44,9 +44,21 @@ test("temporada: cadeia de taxas e líquido (cálculo manual)", () => {
   perto(r.base_gestao, 18396);
   perto(r.taxa_gestao, 4599); // 25% sobre o que resta após o Airbnb
   perto(r.custos_comuns, 7200); // (500 + 100) x 12, proprietário paga tudo
-  perto(r.liquido_anos_seguintes, 2582);
+  perto(r.custo_limpeza, 0); // plano Seazone inclui limpeza e lavanderia
+  perto(r.liquido_anos_seguintes, 6232); // 18396 - 4599 - 365 - 7200
   perto(r.implantacao, 3799);
-  perto(r.liquido_primeiro_ano, 2582 - 3799);
+  perto(r.liquido_primeiro_ano, 6232 - 3799);
+});
+
+test("autogestão: limpeza e lavanderia são custo do proprietário", () => {
+  const r = calcTemporada({
+    ...base,
+    temporada: { ...base.temporada, plano: "autogestao", taxa_gestao_pct: 0, lavanderia_por_estadia: 10 },
+  });
+  perto(r.custo_limpeza, 3650); // 36,5 estadias x 100
+  perto(r.custo_lavanderia, 365); // 36,5 estadias x 10
+  perto(r.taxa_gestao, 0);
+  perto(r.liquido_anos_seguintes, 18396 - 3650 - 365 - 365 - 7200); // 6816
 });
 
 test("tradicional: inquilino paga condomínio; vacância volta todos os custos ao proprietário", () => {
@@ -69,7 +81,7 @@ test("comparativo e breakeven", () => {
   const t = calcTemporada(base);
   const d = calcTradicional(base);
   const c = comparar(t, d);
-  perto(c.diferenca_anual, 2582 - 16516);
+  perto(c.diferenca_anual, 6232 - 16516);
   assert.equal(c.viabilidade, "NÃO-VIÁVEL");
   assert.equal(c.breakeven_meses, null);
 
