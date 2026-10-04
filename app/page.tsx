@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Simulacao from "@/components/Simulacao";
 import { lerResposta, montarPrompt, type RespostaEspecialista } from "@/lib/especialista";
 
 const brl = (n: number | null) =>
@@ -23,6 +24,7 @@ export default function Home() {
   const [erros, setErros] = useState<string[]>([]);
   const [avisos, setAvisos] = useState<string[]>([]);
   const [dados, setDados] = useState<RespostaEspecialista | null>(null);
+  const [versao, setVersao] = useState(0);
 
   const valido = localizacao.trim().length >= 10 && tipo.trim().length >= 15;
 
@@ -41,6 +43,7 @@ export default function Home() {
     const r = lerResposta(colado);
     if (r.ok) {
       setDados(r.dados);
+      setVersao((v) => v + 1);
       setAvisos(r.avisos);
       setErros([]);
     } else {
@@ -239,6 +242,8 @@ export default function Home() {
           </details>
         </section>
       )}
+
+      {dados && <Simulacao key={versao} dados={dados} />}
     </main>
   );
 }
