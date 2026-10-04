@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  calcCenarios,
   calcTemporada,
   calcTradicional,
   comparar,
@@ -143,6 +144,12 @@ export default function Simulacao({ dados }: { dados: RespostaEspecialista }) {
   const trad = calcTradicional(entradas);
   const comp = comparar(temp, trad);
   const planos = compararPlanos(entradas);
+  const cenarios = calcCenarios(entradas, {
+    diaria_min: t0.preco_minimo,
+    diaria_max: t0.preco_maximo,
+    ocupacao_min_pct: t0.ocupacao_anual_min_pct,
+    ocupacao_max_pct: t0.ocupacao_anual_max_pct,
+  });
 
   function escolherPlano(id: PlanoId) {
     setPlano(id);
@@ -281,6 +288,40 @@ export default function Simulacao({ dados }: { dados: RespostaEspecialista }) {
             ? "A temporada não rende mais que o tradicional, então a implantação não se paga."
             : `A implantação (${brl(temp.implantacao)}) se paga em ${comp.breakeven_meses.toFixed(1)} meses com a vantagem da temporada.`}
         </p>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+        <p className="p-3 pb-0 font-medium">Cenários da temporada</p>
+        <p className="px-3 pt-1 text-sm text-zinc-600">
+          Os dados de mercado variam entre fontes e consultas. O conservador usa a diária e a ocupação mínimas do
+          especialista, o central usa os valores acima, e o otimista usa as máximas. As demais premissas não mudam.
+        </p>
+        <table className="mt-2 w-full text-left text-sm">
+          <thead className="bg-zinc-50 text-zinc-600">
+            <tr>
+              <th className="p-3">Cenário</th>
+              <th className="p-3">Diária</th>
+              <th className="p-3">Ocupação</th>
+              <th className="p-3">Líquido temporada</th>
+              <th className="p-3">Contra o tradicional</th>
+              <th className="p-3">Resultado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cenarios.map((c) => (
+              <tr key={c.id} className={`border-t border-zinc-100 ${c.id === "central" ? "bg-[#007AFF]/5" : ""}`}>
+                <td className="p-3">{c.nome}</td>
+                <td className="p-3">{brl(c.diaria)}</td>
+                <td className="p-3">{c.ocupacao_pct}%</td>
+                <td className="p-3">{brl(c.temporada.liquido_anos_seguintes)}</td>
+                <td className="p-3">{brl(c.comparativo.diferenca_anual)}</td>
+                <td className="p-3 font-medium" style={{ color: COR[c.comparativo.viabilidade] }}>
+                  {c.comparativo.viabilidade}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       <div className={grade}>
