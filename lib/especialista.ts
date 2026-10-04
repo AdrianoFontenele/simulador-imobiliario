@@ -1,10 +1,14 @@
 import { z } from "zod";
 
-// Contrato de dados do especialista. A IA só traz dados de mercado; todo o
-// cálculo financeiro é feito em lib/calculations.ts.
+// Contrato de dados do especialista. A IA só traz dados de mercado em NÍVEL ANUAL;
+// sazonalidade mensal e todo o cálculo financeiro são feitos pelo sistema
+// (lib/calculations.ts), nunca pela IA.
 
 const num = z.number();
 const numOuNull = z.number().nullable();
+const pct = z.number().min(0).max(100);
+
+export const ITENS_CUSTO = ["condominio", "iptu", "energia", "agua", "gas", "internet"] as const;
 
 export const respostaSchema = z.object({
   localizacao_normalizada: z.string(),
@@ -12,32 +16,28 @@ export const respostaSchema = z.object({
   uf: z.string(),
   perfil_imovel: z.object({
     area_m2: numOuNull,
-    quartos: numOuNull,
+    quartos: numOuNull, // 0 para studio/kitnet
     capacidade_hospedes: numOuNull,
+    mobiliado: z.boolean().nullable(),
+  }),
+  viabilidade_do_tipo: z.object({
+    status: z.enum(["compativel", "incomum", "inexistente"]),
+    observacao: z.string(),
+  }),
+  risco_regulatorio: z.object({
+    restricao_condominio: z.enum(["provavel", "possivel", "improvavel", "desconhecido"]),
+    observacao: z.string(),
   }),
   temporada: z.object({
     preco_minimo: num,
     preco_medio: num,
     preco_maximo: num,
-    meses: z
-      .array(
-        z.object({
-          mes: z.number().int().min(1).max(12),
-          diaria: num,
-          ocupacao_pct: z.number().min(0).max(100),
-          classificacao: z.enum(["alta", "media", "baixa"]),
-          fonte_periodo: z.string().nullable(),
-        }),
-      )
-      .length(12),
+    ocupacao_anual_pct: pct,
+    ocupacao_anual_min_pct: pct,
+    ocupacao_anual_max_pct: pct,
+    base_ocupacao: z.enum(["boletim_oficial", "relatorio_mercado", "comparaveis", "estimativa"]),
     estadia_media_noites: numOuNull,
     taxa_limpeza_cobrada_hospede: numOuNull,
-    base_ocupacao: z.enum([
-      "boletim_oficial",
-      "relatorio_mercado",
-      "comparaveis",
-      "estimativa",
-    ]),
     sazonalidade_resumo: z.string(),
   }),
   tradicional: z.object({
@@ -46,14 +46,13 @@ export const respostaSchema = z.object({
     aluguel_mensal_max: num,
     vacancia_meses_ano: numOuNull,
   }),
-  custos_comuns_estimados: z.object({
-    condominio: numOuNull,
-    iptu: numOuNull,
-    energia: numOuNull,
-    agua: numOuNull,
-    internet: numOuNull,
-    pagos_pelo_inquilino_no_tradicional: z.array(z.string()),
-  }),
+  custos_comuns_estimados: z.array(
+    z.object({
+      item: z.enum(ITENS_CUSTO),
+      valor_mensal: numOuNull,
+      pago_por_no_tradicional: z.enum(["inquilino", "proprietario"]),
+    }),
+  ),
   custos_operacionais: z.object({
     limpeza_por_estadia: numOuNull,
     lavanderia_por_estadia: numOuNull,
@@ -67,7 +66,7 @@ export const respostaSchema = z.object({
       z.object({
         descricao: z.string(),
         url: z.string().nullable(),
-        tipo: z.enum(["airbnb", "residencial"]),
+        tipo: z.enum(["airbnb", "temporada_portal", "aluguel_residencial"]),
         valor: num,
         distancia_km: numOuNull,
       }),
@@ -91,54 +90,64 @@ export type RespostaEspecialista = z.infer<typeof respostaSchema>;
 
 const SYSTEM = `Você é um analista sênior de mercado imobiliário brasileiro, especializado em aluguel por temporada (Airbnb) e em locação residencial tradicional.
 
-Sua tarefa é levantar DADOS DE MERCADO para um imóvel. Você NÃO calcula lucro, impostos, taxas de gestão ou viabilidade: isso é feito pelo sistema.
+Sua tarefa é levantar DADOS DE MERCADO, em NÍVEL ANUAL, para um imóvel. Você NÃO calcula lucro, impostos, taxas de gestão, viabilidade financeira nem curva mensal de sazonalidade: isso é feito pelo sistema.
 
 PROCESSO
-1. Interprete a localização (bairro, cidade, UF) e o tipo do imóvel (área, quartos, mobília, diferenciais como piscina ou vista).
-2. Use a busca na web para encontrar comparáveis reais: anúncios ativos no Airbnb na mesma região com perfil semelhante (mesmo número de quartos, padrão parecido, raio de até 2 km; amplie e registre se faltar amostra) e anúncios de aluguel residencial equivalentes (QuintoAndar, ZAP, VivaReal, OLX).
-3. Estime a diária média (ADR) e a ocupação MÊS A MÊS (jan a dez) para ESTA cidade. Considere feriados, férias escolares, eventos, clima e perfil do hóspede local (turismo, negócios, eventos, saúde). Não use um padrão genérico de praia para uma cidade que não é de praia.
-4. Estime os custos recorrentes do imóvel (condomínio, IPTU, energia, água, internet) quando houver base para isso. Se não houver, devolva null.
-5. Indique quais custos comuns normalmente são pagos pelo INQUILINO no aluguel tradicional naquela praça.
+1. Interprete a localização (bairro, cidade, UF) e o tipo do imóvel (área, quartos, mobília, diferenciais).
+2. Verifique se o tipo existe na região. Exemplo: casa ou sobrado em bairro só de prédios. Se for improvável ou inexistente, preencha viabilidade_do_tipo (incomum ou inexistente), explique, e use como referência o tipo mais comum da região, dizendo isso nas premissas.
+3. Use a busca na web para encontrar:
+   a) comparáveis de temporada na região: anúncios do Airbnb (tipo "airbnb") e anúncios de temporada em portais imobiliários (tipo "temporada_portal"), com perfil semelhante (mesmo número de quartos, padrão parecido, raio de até 2 km; amplie e registre se faltar amostra);
+   b) comparáveis de aluguel residencial tradicional (tipo "aluguel_residencial"): SOMENTE anúncios de aluguel. Anúncio de venda NUNCA é comparável de aluguel;
+   c) médias anuais de ocupação e diária do Airbnb para a região ou cidade.
+4. Estime a diária média (ADR) e a ocupação ANUAL (central, mínima e máxima) para o imóvel. Não devolva valores mês a mês. Descreva a sazonalidade apenas em texto qualitativo (quais períodos são fortes ou fracos e por quê), sem números mensais.
+5. Liste os custos recorrentes do imóvel (condomínio, IPTU, energia, água, gás, internet) com valor MENSAL quando houver base; senão valor_mensal = null. Para cada item, indique quem normalmente paga no aluguel TRADICIONAL naquela praça: "inquilino" ou "proprietario" (use os próprios anúncios de aluguel: "+ condomínio, IPTU" indica inquilino). No aluguel por temporada o proprietário paga todos.
+6. Avalie o risco de o condomínio proibir ou restringir temporada (risco_regulatorio).
+7. Antes de responder, revise: coerência dos números, tipos dos comparáveis, ordem mínimo <= central <= máximo.
 
 FONTES PARA OCUPAÇÃO E DIÁRIA (ordem de preferência)
-1. BOLETINS OFICIAIS MENSAIS da região do imóvel, publicados por órgãos oficiais: Ministério do Turismo, secretarias e observatórios de turismo estaduais e municipais, ANAC (fluxo aéreo mensal como indicador de demanda), Embratur e IBGE, quando houver. Para cada mês de jan a dez, busque o boletim mais recente que traga ocupação por período e use o mesmo mês de anos anteriores para compor a sazonalidade. Complementos do setor: InFOHB (fohb.com.br) e relatórios da Seazone.
-2. Agregadores de dados do Airbnb (AirDNA, Airbtics, Hostnjoy) e comparáveis diretos de anúncios na região, para calibrar o nível de ocupação do short stay.
-3. Seu conhecimento geral, apenas como último recurso.
-- Ocupação hoteleira NÃO é ocupação de short stay: use-a só como indicador de SAZONALIDADE (qual mês é mais forte ou fraco) e ajuste o nível pelo que o Airbnb local mostra.
-- Se NÃO encontrar boletim oficial para a região, diga isso explicitamente em "alertas" e use base_ocupacao = "estimativa" ou "comparaveis". Nunca atribua um número a um boletim que você não leu.
-- Para cada mês, preencha "fonte_periodo" com o nome do boletim e o período de referência (ex.: "Boletim X, jul/2026"), ou null se não houver.
-- Informe em "temporada.base_ocupacao" de onde veio o número: "boletim_oficial", "relatorio_mercado", "comparaveis" ou "estimativa". Cite cada fonte em "fontes" com nome, url e referência (mês/ano).
+1. Boletins e indicadores OFICIAIS da região, publicados por órgãos oficiais: Observatório do Turismo do DF (observatoriodoturismo.df.gov.br) e equivalentes de outros estados e municípios, Ministério do Turismo, ANAC, Embratur, IBGE. Eles tratam de hotelaria e fluxo turístico: use-os só como INDICADOR de nível de demanda, nunca como ocupação de short stay.
+2. Relatórios de mercado de short stay: Airbtics, BNBCalc, AirDNA, Hostnjoy, Seazone, InFOHB, estudos do Airbnb.
+3. Comparáveis diretos de anúncios na região.
+4. Seu conhecimento geral, apenas como último recurso.
+- Informe em "temporada.base_ocupacao" de onde veio o número: "boletim_oficial", "relatorio_mercado", "comparaveis" ou "estimativa".
+- Se NÃO encontrar boletim oficial, diga isso em "alertas". Nunca atribua um número a uma fonte que você não leu.
+- Cite cada fonte em "fontes" com nome, url e referência (mês/ano ou período dos dados).
+- Um dado de um único período (por exemplo, "junho") não representa o ano inteiro.
+- Se as fontes divergirem muito, mostre a faixa em ocupacao_anual_min_pct e ocupacao_anual_max_pct e explique nos alertas qual você adotou e por quê.
 
 REGRAS DE QUALIDADE
-- Valores em reais (BRL), números puros, sem símbolo e sem texto dentro de campos numéricos. Percentuais de 0 a 100. Ocupação é a % de noites vendidas no mês.
-- Diária é o valor da noite SEM taxa de limpeza e SEM taxas do Airbnb.
-- Custos mensais (condomínio, IPTU, energia, água, internet) são valores por MÊS.
-- Cada valor deve ser coerente: preco_minimo <= preco_medio <= preco_maximo; a média das diárias mensais deve ficar próxima de preco_medio.
-- Nunca invente dado. Se não houver base, use null e explique em "alertas".
+- Valores em reais (BRL), números puros, sem símbolo e sem texto dentro de campos numéricos. Percentuais de 0 a 100.
+- Ocupação é a % de noites vendidas no ano. Diária é o valor da noite SEM taxa de limpeza e SEM taxas do Airbnb.
+- Custos mensais são valores por MÊS.
+- preco_minimo <= preco_medio <= preco_maximo; ocupacao_anual_min_pct <= ocupacao_anual_pct <= ocupacao_anual_max_pct.
+- Se a diária adotada diferir mais de 30% da mediana dos comparáveis ou da fonte citada, explique nos alertas.
+- Studio, kitnet ou quarto-sala: quartos = 0.
+- Nunca invente dado. Se não houver base, use null e explique em "alertas". Não escreva percentuais ou números sem sentido nos textos.
 - Seja conservador: na dúvida, prefira o cenário que reduz a receita.
-- Cite no máximo 8 comparáveis, todos reais e verificáveis (com URL). Não fabrique anúncios, nomes ou links.
-- "confianca" reflete a qualidade da amostra: alta (>= 8 comparáveis próximos e boletim oficial), media (4 a 7), baixa (< 4 ou dados indiretos).
-- "meses" deve ter exatamente 12 itens, mes de 1 a 12.
+- Cite no máximo 8 comparáveis, todos reais e verificáveis (com URL). Não fabrique anúncios, nomes ou links. O tipo do comparável deve corresponder à fonte real (um anúncio de portal imobiliário NÃO é "airbnb").
+- "confianca": "alta" só com boletim oficial E pelo menos 5 comparáveis de temporada próximos; "media" com pelo menos 3 comparáveis de temporada, nunca "alta" sem boletim oficial; "baixa" com menos de 3 comparáveis de temporada ou dados só indiretos.
 - Responda APENAS com o JSON no formato abaixo, em um único bloco de código json, sem texto antes ou depois.`;
 
 const FORMATO = `{
   "localizacao_normalizada": "string",
   "cidade": "string",
   "uf": "string",
-  "perfil_imovel": { "area_m2": number|null, "quartos": number|null, "capacidade_hospedes": number|null },
+  "perfil_imovel": { "area_m2": number|null, "quartos": number|null, "capacidade_hospedes": number|null, "mobiliado": boolean|null },
+  "viabilidade_do_tipo": { "status": "compativel"|"incomum"|"inexistente", "observacao": "string" },
+  "risco_regulatorio": { "restricao_condominio": "provavel"|"possivel"|"improvavel"|"desconhecido", "observacao": "string" },
   "temporada": {
     "preco_minimo": number, "preco_medio": number, "preco_maximo": number,
-    "meses": [ { "mes": 1, "diaria": number, "ocupacao_pct": number, "classificacao": "alta"|"media"|"baixa", "fonte_periodo": "string"|null } ],
+    "ocupacao_anual_pct": number, "ocupacao_anual_min_pct": number, "ocupacao_anual_max_pct": number,
+    "base_ocupacao": "boletim_oficial"|"relatorio_mercado"|"comparaveis"|"estimativa",
     "estadia_media_noites": number|null,
     "taxa_limpeza_cobrada_hospede": number|null,
-    "base_ocupacao": "boletim_oficial"|"relatorio_mercado"|"comparaveis"|"estimativa",
-    "sazonalidade_resumo": "string"
+    "sazonalidade_resumo": "string (qualitativo, sem números mensais)"
   },
   "tradicional": { "aluguel_mensal_min": number, "aluguel_mensal_mediano": number, "aluguel_mensal_max": number, "vacancia_meses_ano": number|null },
-  "custos_comuns_estimados": { "condominio": number|null, "iptu": number|null, "energia": number|null, "agua": number|null, "internet": number|null, "pagos_pelo_inquilino_no_tradicional": ["string"] },
+  "custos_comuns_estimados": [ { "item": "condominio"|"iptu"|"energia"|"agua"|"gas"|"internet", "valor_mensal": number|null, "pago_por_no_tradicional": "inquilino"|"proprietario" } ],
   "custos_operacionais": { "limpeza_por_estadia": number|null, "lavanderia_por_estadia": number|null, "consumiveis_por_noite": number|null },
   "implantacao": { "mobilia_e_enxoval_estimado": number|null },
-  "comparaveis": [ { "descricao": "string", "url": "string"|null, "tipo": "airbnb"|"residencial", "valor": number, "distancia_km": number|null } ],
+  "comparaveis": [ { "descricao": "string", "url": "string"|null, "tipo": "airbnb"|"temporada_portal"|"aluguel_residencial", "valor": number, "distancia_km": number|null } ],
   "fontes": [ { "nome": "string", "url": "string"|null, "referencia": "string" } ],
   "confianca": "alta"|"media"|"baixa",
   "fatores_regionais": "string",
@@ -151,7 +160,7 @@ export function montarPrompt(localizacao: string, tipo: string, hoje = new Date(
   const data = hoje.toLocaleDateString("pt-BR");
   return `${SYSTEM}
 
-FORMATO DE SAÍDA (exatamente estas chaves):
+FORMATO DE SAÍDA (exatamente estas chaves, incluindo um item em custos_comuns_estimados para cada um dos 6 itens):
 ${FORMATO}
 
 Localização: ${localizacao.trim()}
@@ -160,6 +169,12 @@ Data de hoje: ${data}
 
 Levante os dados de mercado conforme o formato.`;
 }
+
+const mediana = (v: number[]) => {
+  const s = [...v].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
 
 // Extrai o JSON de uma resposta colada (com ou sem cercas ```json).
 export function lerResposta(texto: string):
@@ -185,24 +200,48 @@ export function lerResposta(texto: string):
     };
   }
   const d = r.data;
-  const avisos: string[] = [];
   const t = d.temporada;
+  const avisos: string[] = [];
+
   if (!(t.preco_minimo <= t.preco_medio && t.preco_medio <= t.preco_maximo)) {
-    avisos.push("Preços fora de ordem (mínimo <= médio <= máximo).");
+    avisos.push("Diárias fora de ordem (mínimo <= médio <= máximo).");
   }
-  const meses = new Set(t.meses.map((m) => m.mes));
-  if (meses.size !== 12) avisos.push("Os meses não cobrem 1 a 12 sem repetição.");
-  const mediaDiaria = t.meses.reduce((s, m) => s + m.diaria, 0) / 12;
-  if (Math.abs(mediaDiaria - t.preco_medio) / t.preco_medio > 0.25) {
-    avisos.push(
-      `A média das diárias mensais (${mediaDiaria.toFixed(0)}) difere mais de 25% do preço médio informado.`,
-    );
+  if (!(t.ocupacao_anual_min_pct <= t.ocupacao_anual_pct && t.ocupacao_anual_pct <= t.ocupacao_anual_max_pct)) {
+    avisos.push("Ocupação fora de ordem (mínima <= central <= máxima).");
+  }
+  if (d.viabilidade_do_tipo.status !== "compativel") {
+    avisos.push(`Tipo de imóvel ${d.viabilidade_do_tipo.status} na região: ${d.viabilidade_do_tipo.observacao}`);
+  }
+  if (d.risco_regulatorio.restricao_condominio === "provavel" || d.risco_regulatorio.restricao_condominio === "possivel") {
+    avisos.push("Risco de o condomínio restringir aluguel por temporada: confira a convenção.");
   }
   if (t.base_ocupacao === "estimativa") {
-    avisos.push("Ocupação baseada em estimativa, sem boletim ou comparáveis.");
+    avisos.push("Ocupação baseada em estimativa, sem boletim, relatório ou comparáveis.");
+  }
+
+  const temporada = d.comparaveis.filter((c) => c.tipo !== "aluguel_residencial");
+  if (temporada.length < 3) {
+    avisos.push(`Apenas ${temporada.length} comparável(is) de temporada: amostra insuficiente para a diária.`);
+  } else {
+    const med = mediana(temporada.map((c) => c.valor));
+    if (Math.abs(t.preco_medio - med) / med > 0.3) {
+      avisos.push(
+        `Diária média (${t.preco_medio}) difere mais de 30% da mediana dos comparáveis de temporada (${med.toFixed(0)}).`,
+      );
+    }
   }
   if (d.comparaveis.some((c) => !c.url)) {
     avisos.push("Há comparáveis sem URL: não dá para verificar.");
+  }
+  if (d.comparaveis.some((c) => c.tipo === "aluguel_residencial" && /\/venda|-venda-/i.test(c.url ?? ""))) {
+    avisos.push("Um comparável de aluguel tem 'venda' na URL: pode ser anúncio de venda.");
+  }
+  if (d.confianca === "alta" && t.base_ocupacao !== "boletim_oficial") {
+    avisos.push("Confiança 'alta' sem boletim oficial: inconsistente com as regras do prompt.");
+  }
+  const faltando = ITENS_CUSTO.filter((i) => d.custos_comuns_estimados.find((c) => c.item === i)?.valor_mensal == null);
+  if (faltando.length > 0) {
+    avisos.push(`Custos sem valor (preencher manualmente): ${faltando.join(", ")}.`);
   }
   return { ok: true, dados: d, avisos };
 }
