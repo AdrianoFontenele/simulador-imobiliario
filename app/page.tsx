@@ -219,7 +219,7 @@ export default function Home() {
                   ) : (
                     c.descricao
                   )}{" "}
-                  - {c.tipo}, {brl(c.valor)}
+                  - {c.tipo}, {c.valor === null ? "sem preço visível" : brl(c.valor)}
                 </li>
               ))}
             </ul>
