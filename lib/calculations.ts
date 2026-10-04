@@ -101,11 +101,11 @@ export function calcTemporada(e: Entradas): ResultadoTemporada {
   const base_gestao = receita_bruta - taxa_airbnb;
   const taxa_gestao = base_gestao * pct(t.taxa_gestao_pct);
 
-  // Nos planos Seazone, limpeza e lavanderia já estão dentro da taxa de gestão.
-  const incluidas = PLANOS[t.plano].limpeza_lavanderia_incluidas;
+  // Nos planos Seazone, limpeza, lavanderia e consumíveis já estão dentro da taxa de gestão.
+  const incluidas = PLANOS[t.plano].operacao_incluida;
   const custo_limpeza = incluidas ? 0 : estadias * t.limpeza_por_estadia;
   const custo_lavanderia = incluidas ? 0 : estadias * t.lavanderia_por_estadia;
-  const custo_consumiveis = noites * t.consumiveis_por_noite;
+  const custo_consumiveis = incluidas ? 0 : noites * t.consumiveis_por_noite;
   const custos_comuns = 12 * soma(e.custos_comuns.map((c) => c.valor_mensal));
 
   const liquido_antes_ir =

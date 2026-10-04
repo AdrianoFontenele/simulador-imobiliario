@@ -164,7 +164,7 @@ export default function Simulacao({ dados }: { dados: RespostaEspecialista }) {
   const card = "rounded-xl border border-zinc-200 bg-white p-4 text-sm";
   const grade = "grid grid-cols-1 gap-3 sm:grid-cols-2";
   const p = PLANOS[plano];
-  const limpezaIncluida = p.limpeza_lavanderia_incluidas;
+  const operacaoIncluida = p.operacao_incluida;
 
   return (
     <section className="flex flex-col gap-6">
@@ -181,14 +181,14 @@ export default function Simulacao({ dados }: { dados: RespostaEspecialista }) {
           <Campo label="Ocupação anual" valor={ocupacao} onChange={setOcupacao} sufixo="%" />
           <Campo label="Estadia média" valor={estadia} onChange={setEstadia} sufixo="noites" step={0.1} />
           <Campo label="Taxa de limpeza cobrada do hóspede (por estadia)" valor={taxaLimpezaHospede} onChange={setTaxaLimpezaHospede} />
-          <Campo label="Custo de limpeza pago por você (por estadia)" valor={limpeza} onChange={setLimpeza} preencher={op.limpeza_por_estadia === null} desativado={limpezaIncluida} />
-          <Campo label="Lavanderia (por estadia)" valor={lavanderia} onChange={setLavanderia} preencher={op.lavanderia_por_estadia === null} desativado={limpezaIncluida} />
-          <Campo label="Consumíveis (por noite)" valor={consumiveis} onChange={setConsumiveis} preencher={op.consumiveis_por_noite === null} step={0.5} />
+          <Campo label="Custo de limpeza pago por você (por estadia)" valor={limpeza} onChange={setLimpeza} preencher={op.limpeza_por_estadia === null} desativado={operacaoIncluida} />
+          <Campo label="Lavanderia (por estadia)" valor={lavanderia} onChange={setLavanderia} preencher={op.lavanderia_por_estadia === null} desativado={operacaoIncluida} />
+          <Campo label="Consumíveis (por noite)" valor={consumiveis} onChange={setConsumiveis} preencher={op.consumiveis_por_noite === null} step={0.5} desativado={operacaoIncluida} />
           <Campo label="Taxa do Airbnb" valor={taxaAirbnb} onChange={setTaxaAirbnb} sufixo="%" step={0.5} />
         </div>
-        {limpezaIncluida && (
+        {operacaoIncluida && (
           <p className="mt-3 text-zinc-600">
-            Limpeza e lavanderia estão incluídas na taxa do plano Seazone escolhido, então esses dois custos ficam zerados no cálculo. A taxa de limpeza que o hóspede paga continua como receita. Escolha Autogestão para informar esses custos.
+            Limpeza, lavanderia e consumíveis estão incluídos na taxa do plano Seazone escolhido, então esses três custos ficam zerados no cálculo. A taxa de limpeza que o hóspede paga continua como receita. Escolha Autogestão para informar esses custos.
           </p>
         )}
       </div>
@@ -332,7 +332,7 @@ export default function Simulacao({ dados }: { dados: RespostaEspecialista }) {
           <Linha rotulo="Receita bruta" valor={temp.receita_bruta} forte />
           <Linha rotulo="Taxa do Airbnb" valor={temp.taxa_airbnb} negativo />
           <Linha rotulo={`Taxa de gestão (${taxaGestao}%)`} valor={temp.taxa_gestao} negativo />
-          {limpezaIncluida ? (
+          {operacaoIncluida ? (
             <div className="flex justify-between gap-4 py-1">
               <span className="text-zinc-600">Limpeza e lavanderia</span>
               <span className="text-zinc-500">incluídas na taxa</span>
@@ -340,7 +340,7 @@ export default function Simulacao({ dados }: { dados: RespostaEspecialista }) {
           ) : (
             <Linha rotulo="Limpeza e lavanderia" valor={temp.custo_limpeza + temp.custo_lavanderia} negativo />
           )}
-          <Linha rotulo="Consumíveis" valor={temp.custo_consumiveis} negativo />
+          {!operacaoIncluida && <Linha rotulo="Consumíveis" valor={temp.custo_consumiveis} negativo />}
           <Linha rotulo="Custos do imóvel" valor={temp.custos_comuns} negativo />
           {temp.imposto > 0 && <Linha rotulo="Imposto" valor={temp.imposto} negativo />}
           <Linha rotulo="Líquido (2º ano em diante)" valor={temp.liquido_anos_seguintes} forte />
@@ -384,7 +384,7 @@ export default function Simulacao({ dados }: { dados: RespostaEspecialista }) {
         <summary className="cursor-pointer font-medium">Como o cálculo funciona</summary>
         <ul className="mt-3 list-disc space-y-1 pl-5 text-zinc-700">
           <li>Noites ocupadas = 365 x ocupação. Receita das diárias = noites x diária média.</li>
-          <li>Estadias = noites ocupadas / estadia média. A taxa de limpeza cobrada entra como receita. A limpeza e a lavanderia pagas por você entram como custo a cada estadia, exceto nos planos Seazone, que já as incluem na taxa.</li>
+          <li>Estadias = noites ocupadas / estadia média. A taxa de limpeza cobrada entra como receita. A limpeza e a lavanderia pagas por você entram como custo a cada estadia, e os consumíveis a cada noite, exceto nos planos Seazone, que incluem os três na taxa.</li>
           <li>A taxa do Airbnb incide sobre diária e taxa de limpeza. A taxa de gestão incide sobre o que sobra depois dela.</li>
           <li>Custos do imóvel (condomínio, IPTU, contas) são seus em todos os meses da temporada, pois o hóspede não paga contas.</li>
           <li>No tradicional, o inquilino costuma pagar condomínio, IPTU e contas. Esses itens ficam fora do seu cálculo enquanto o imóvel está alugado. Nos meses de vacância, todos voltam para você.</li>
