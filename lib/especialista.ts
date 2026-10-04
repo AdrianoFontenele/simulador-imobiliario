@@ -67,7 +67,7 @@ export const respostaSchema = z.object({
         descricao: z.string(),
         url: z.string().nullable(),
         tipo: z.enum(["airbnb", "temporada_portal", "aluguel_residencial"]),
-        valor: num,
+        valor: numOuNull,
         distancia_km: numOuNull,
       }),
     )
@@ -122,6 +122,9 @@ REGRAS DE QUALIDADE
 - preco_minimo <= preco_medio <= preco_maximo; ocupacao_anual_min_pct <= ocupacao_anual_pct <= ocupacao_anual_max_pct.
 - Se a diária adotada diferir mais de 30% da mediana dos comparáveis ou da fonte citada, explique nos alertas.
 - Studio, kitnet ou quarto-sala: quartos = 0.
+- Em cada comparável, "valor" é a diária (temporada) ou o aluguel mensal (residencial) que você LEU no anúncio. Se o preço não estiver visível, use null. Nunca estime nem arredonde o preço de um anúncio.
+- Para "pago_por_no_tradicional", baseie-se no texto dos anúncios de aluguel ("+ condomínio, IPTU" indica inquilino). Se não houver evidência, use "inquilino" (prática de mercado) e avise em "alertas".
+- "mobilia_e_enxoval_estimado": use null quando não houver base. Não use 0 para significar "não sei".
 - Nunca invente dado. Se não houver base, use null e explique em "alertas". Não escreva percentuais ou números sem sentido nos textos.
 - Seja conservador: na dúvida, prefira o cenário que reduz a receita.
 - Cite no máximo 8 comparáveis, todos reais e verificáveis (com URL). Não fabrique anúncios, nomes ou links. O tipo do comparável deve corresponder à fonte real (um anúncio de portal imobiliário NÃO é "airbnb").
@@ -147,7 +150,7 @@ const FORMATO = `{
   "custos_comuns_estimados": [ { "item": "condominio"|"iptu"|"energia"|"agua"|"gas"|"internet", "valor_mensal": number|null, "pago_por_no_tradicional": "inquilino"|"proprietario" } ],
   "custos_operacionais": { "limpeza_por_estadia": number|null, "lavanderia_por_estadia": number|null, "consumiveis_por_noite": number|null },
   "implantacao": { "mobilia_e_enxoval_estimado": number|null },
-  "comparaveis": [ { "descricao": "string", "url": "string"|null, "tipo": "airbnb"|"temporada_portal"|"aluguel_residencial", "valor": number, "distancia_km": number|null } ],
+  "comparaveis": [ { "descricao": "string", "url": "string"|null, "tipo": "airbnb"|"temporada_portal"|"aluguel_residencial", "valor": number|null, "distancia_km": number|null } ],
   "fontes": [ { "nome": "string", "url": "string"|null, "referencia": "string" } ],
   "confianca": "alta"|"media"|"baixa",
   "fatores_regionais": "string",
@@ -220,15 +223,22 @@ export function lerResposta(texto: string):
   }
 
   const temporada = d.comparaveis.filter((c) => c.tipo !== "aluguel_residencial");
-  if (temporada.length < 3) {
-    avisos.push(`Apenas ${temporada.length} comparável(is) de temporada: amostra insuficiente para a diária.`);
-  } else {
-    const med = mediana(temporada.map((c) => c.valor));
+  const comPreco = temporada.filter((c): c is typeof c & { valor: number } => c.valor !== null);
+  if (comPreco.length < 3) {
+    avisos.push(
+      `Apenas ${comPreco.length} comparável(is) de temporada com preço visível (de ${temporada.length}): amostra insuficiente para a diária.`,
+    );
+  }
+  if (comPreco.length >= 1) {
+    const med = mediana(comPreco.map((c) => c.valor));
     if (Math.abs(t.preco_medio - med) / med > 0.3) {
       avisos.push(
-        `Diária média (${t.preco_medio}) difere mais de 30% da mediana dos comparáveis de temporada (${med.toFixed(0)}).`,
+        `Diária média (${t.preco_medio}) difere mais de 30% da mediana dos comparáveis de temporada com preço (${med.toFixed(0)}, ${comPreco.length} anúncio(s)).`,
       );
     }
+  }
+  if (d.confianca !== "baixa" && comPreco.length < 3) {
+    avisos.push(`Confiança '${d.confianca}' com menos de 3 comparáveis de temporada com preço: o prompt exige 'baixa'.`);
   }
   if (d.comparaveis.some((c) => !c.url)) {
     avisos.push("Há comparáveis sem URL: não dá para verificar.");

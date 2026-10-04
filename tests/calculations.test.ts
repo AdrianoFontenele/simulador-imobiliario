@@ -5,6 +5,7 @@ import {
   calcTradicional,
   classificar,
   comparar,
+  calcCenarios,
   compararPlanos,
   type Entradas,
 } from "../lib/calculations";
@@ -109,4 +110,25 @@ test("comparação de planos: autogestão > essencial > premium", () => {
   assert.ok(get("essencial").liquido > get("premium").liquido);
   perto(get("essencial").implantacao, 3799);
   perto(get("autogestao").implantacao, 2300); // sem adesão
+});
+
+test("cenários: conservador, central e otimista (cálculo manual)", () => {
+  const faixa = { diaria_min: 80, diaria_max: 120, ocupacao_min_pct: 40, ocupacao_max_pct: 60 };
+  const [cons, cen, oti] = calcCenarios(base, faixa);
+  perto(cons.temporada.liquido_anos_seguintes, 1706); // 80 x 40%: 12264 - 3066 - 292 - 7200
+  perto(cen.temporada.liquido_anos_seguintes, 6232); // 100 x 50%, os valores informados
+  perto(oti.temporada.liquido_anos_seguintes, 11677.8); // 120 x 60%: 25754,4 - 6438,6 - 438 - 7200
+  perto(cons.tradicional.liquido_anual, 16516); // o tradicional é o mesmo nos três
+  assert.equal(oti.comparativo.viabilidade, "NÃO-VIÁVEL");
+});
+
+test("cenários: a faixa nunca cruza o valor central editado", () => {
+  // usuário subiu a diária para 300, acima do máximo informado (120)
+  const e = { ...base, temporada: { ...base.temporada, diaria_media: 300 } };
+  const [cons, cen, oti] = calcCenarios(e, { diaria_min: 80, diaria_max: 120, ocupacao_min_pct: 40, ocupacao_max_pct: 60 });
+  assert.equal(cen.diaria, 300);
+  assert.equal(oti.diaria, 300);
+  assert.equal(cons.diaria, 80);
+  assert.ok(cons.temporada.liquido_anos_seguintes <= cen.temporada.liquido_anos_seguintes);
+  assert.ok(cen.temporada.liquido_anos_seguintes <= oti.temporada.liquido_anos_seguintes);
 });

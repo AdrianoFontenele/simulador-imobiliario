@@ -207,3 +207,44 @@ export function formatNumber(n: number): string {
 export function formatCurrency(n: number): string {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
+
+// Faixa de mercado informada pelo especialista (diária e ocupação mínima e máxima).
+export type Faixa = {
+  diaria_min: number;
+  diaria_max: number;
+  ocupacao_min_pct: number;
+  ocupacao_max_pct: number;
+};
+
+export type Cenario = {
+  id: "conservador" | "central" | "otimista";
+  nome: string;
+  diaria: number;
+  ocupacao_pct: number;
+  temporada: ResultadoTemporada;
+  tradicional: ResultadoTradicional;
+  comparativo: Comparativo;
+};
+
+/**
+ * Três cenários para a temporada, mantendo as demais premissas:
+ * conservador (diária e ocupação mínimas), central (os valores informados) e otimista
+ * (máximas). A faixa nunca fica do lado errado do valor central editado pelo usuário.
+ */
+export function calcCenarios(e: Entradas, f: Faixa): Cenario[] {
+  const d = e.temporada.diaria_media;
+  const o = e.temporada.ocupacao_pct;
+  const trad = calcTradicional(e);
+  const defs: [Cenario["id"], string, number, number][] = [
+    ["conservador", "Conservador", Math.min(f.diaria_min, d), Math.min(f.ocupacao_min_pct, o)],
+    ["central", "Central", d, o],
+    ["otimista", "Otimista", Math.max(f.diaria_max, d), Math.max(f.ocupacao_max_pct, o)],
+  ];
+  return defs.map(([id, nome, diaria, ocupacao]) => {
+    const temporada = calcTemporada({
+      ...e,
+      temporada: { ...e.temporada, diaria_media: diaria, ocupacao_pct: ocupacao },
+    });
+    return { id, nome, diaria, ocupacao_pct: ocupacao, temporada, tradicional: trad, comparativo: comparar(temporada, trad) };
+  });
+}
