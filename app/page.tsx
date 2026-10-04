@@ -6,7 +6,14 @@ import { lerResposta, montarPrompt, type RespostaEspecialista } from "@/lib/espe
 const brl = (n: number | null) =>
   n === null ? "-" : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+const ROTULO_ITEM: Record<string, string> = {
+  condominio: "Condomínio",
+  iptu: "IPTU",
+  energia: "Energia",
+  agua: "Água",
+  gas: "Gás",
+  internet: "Internet",
+};
 
 export default function Home() {
   const [localizacao, setLocalizacao] = useState("");
@@ -25,7 +32,7 @@ export default function Home() {
       await navigator.clipboard.writeText(prompt);
       setAviso("Prompt copiado. Na aba do Claude que abriu, cole com Ctrl+V e envie.");
     } catch {
-      setAviso("Não foi possível copiar automaticamente. Use o botão de copiar abaixo.");
+      setAviso("Não foi possível copiar automaticamente. Use o botão Copiar prompt.");
     }
     window.open("https://claude.ai/new", "_blank", "noopener");
   }
@@ -47,6 +54,10 @@ export default function Home() {
     "w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-base outline-none transition focus:border-[#007AFF] focus:ring-4 focus:ring-[#007AFF]/15";
   const botao =
     "rounded-xl bg-[#007AFF] px-5 py-3 font-medium text-white transition active:scale-[0.98] disabled:opacity-40";
+  const card = "rounded-xl border border-zinc-200 bg-white p-4 text-sm";
+
+  const t = dados?.temporada;
+  const receitaBruta = t ? t.preco_medio * 365 * (t.ocupacao_anual_pct / 100) : 0;
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-10">
@@ -109,58 +120,79 @@ export default function Home() {
         )}
       </section>
 
-      {dados && (
+      {dados && t && (
         <section className="flex flex-col gap-5">
           <h2 className="text-lg font-semibold">3. Resultado</h2>
 
           {avisos.length > 0 && (
-            <ul className="rounded-xl border border-amber-400/50 bg-amber-50 p-4 text-sm text-amber-800">
+            <ul className="list-disc rounded-xl border border-amber-400/50 bg-amber-50 p-4 pl-8 text-sm text-amber-800">
               {avisos.map((a) => (
                 <li key={a}>{a}</li>
               ))}
             </ul>
           )}
 
-          <div className="rounded-xl border border-zinc-200 p-4">
+          <div className={card}>
             <p className="font-medium">{dados.localizacao_normalizada}</p>
-            <p className="text-sm text-zinc-600">
-              Confiança: {dados.confianca} | Base da ocupação: {dados.temporada.base_ocupacao}
-            </p>
-            <p className="mt-2 text-sm">
-              Diária: {brl(dados.temporada.preco_minimo)} a {brl(dados.temporada.preco_maximo)} (média{" "}
-              {brl(dados.temporada.preco_medio)}) | Aluguel tradicional:{" "}
-              {brl(dados.tradicional.aluguel_mensal_mediano)}/mês
+            <p className="text-zinc-600">
+              Confiança: {dados.confianca} | Base da ocupação: {t.base_ocupacao}
             </p>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-zinc-200">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className={card}>
+              <p className="mb-1 font-medium">Temporada (nível anual)</p>
+              <p>
+                Diária: {brl(t.preco_minimo)} a {brl(t.preco_maximo)} (média {brl(t.preco_medio)})
+              </p>
+              <p>
+                Ocupação: {t.ocupacao_anual_min_pct}% a {t.ocupacao_anual_max_pct}% (central{" "}
+                {t.ocupacao_anual_pct}%)
+              </p>
+              <p>Estadia média: {t.estadia_media_noites ?? "-"} noites</p>
+              <p>Taxa de limpeza cobrada: {brl(t.taxa_limpeza_cobrada_hospede)}</p>
+              <p className="mt-2 text-zinc-600">
+                Receita bruta anual estimada (diária média x 365 x ocupação central, antes de taxas e custos):{" "}
+                <span className="font-medium text-zinc-900">{brl(receitaBruta)}</span>
+              </p>
+            </div>
+            <div className={card}>
+              <p className="mb-1 font-medium">Aluguel tradicional</p>
+              <p>
+                Mensal: {brl(dados.tradicional.aluguel_mensal_min)} a {brl(dados.tradicional.aluguel_mensal_max)}{" "}
+                (mediano {brl(dados.tradicional.aluguel_mensal_mediano)})
+              </p>
+              <p>Vacância: {dados.tradicional.vacancia_meses_ano ?? "-"} mês(es) por ano</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-zinc-50 text-zinc-600">
                 <tr>
-                  <th className="p-3">Mês</th>
-                  <th className="p-3">Temporada</th>
-                  <th className="p-3">Diária</th>
-                  <th className="p-3">Ocupação</th>
-                  <th className="p-3">Fonte</th>
+                  <th className="p-3">Custo comum</th>
+                  <th className="p-3">Valor mensal</th>
+                  <th className="p-3">Pago por (tradicional)</th>
                 </tr>
               </thead>
               <tbody>
-                {[...dados.temporada.meses]
-                  .sort((a, b) => a.mes - b.mes)
-                  .map((m) => (
-                    <tr key={m.mes} className="border-t border-zinc-100">
-                      <td className="p-3">{MESES[m.mes - 1]}</td>
-                      <td className="p-3">{m.classificacao}</td>
-                      <td className="p-3">{brl(m.diaria)}</td>
-                      <td className="p-3">{m.ocupacao_pct}%</td>
-                      <td className="p-3 text-zinc-500">{m.fonte_periodo ?? "-"}</td>
-                    </tr>
-                  ))}
+                {dados.custos_comuns_estimados.map((c) => (
+                  <tr key={c.item} className="border-t border-zinc-100">
+                    <td className="p-3">{ROTULO_ITEM[c.item]}</td>
+                    <td className="p-3">{brl(c.valor_mensal)}</td>
+                    <td className="p-3">{c.pago_por_no_tradicional}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
 
-          <div className="rounded-xl border border-zinc-200 p-4 text-sm">
+          <div className={card}>
+            <p className="mb-1 font-medium">Sazonalidade (qualitativa)</p>
+            <p>{t.sazonalidade_resumo}</p>
+          </div>
+
+          <div className={card}>
             <p className="mb-2 font-medium">Fontes e comparáveis</p>
             <ul className="list-disc pl-5">
               {dados.fontes.map((f) => (
@@ -191,7 +223,7 @@ export default function Home() {
           </div>
 
           {dados.alertas.length > 0 && (
-            <div className="rounded-xl border border-zinc-200 p-4 text-sm">
+            <div className={card}>
               <p className="mb-2 font-medium">Alertas do especialista</p>
               <ul className="list-disc pl-5">
                 {dados.alertas.map((a) => (
@@ -201,7 +233,7 @@ export default function Home() {
             </div>
           )}
 
-          <details className="rounded-xl border border-zinc-200 p-4 text-sm">
+          <details className={card}>
             <summary className="cursor-pointer font-medium">JSON completo</summary>
             <pre className="mt-3 overflow-x-auto text-xs">{JSON.stringify(dados, null, 2)}</pre>
           </details>
