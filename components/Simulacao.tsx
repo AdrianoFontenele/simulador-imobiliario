@@ -265,7 +265,10 @@ export default function Simulacao({ dados }: { dados: RespostaEspecialista }) {
       </div>
 
       <div className={card}>
-        <p className="mb-3 font-medium">Implantação (custos únicos da temporada) e imposto</p>
+        <p className="mb-1 font-medium">Implantação (custos únicos da temporada) e imposto</p>
+        <p className="mb-3 text-zinc-600">
+          O valor de enxoval e mobília vindo do especialista é só uma estimativa, sem cotação. A Seazone intermedia a compra do enxoval com fornecedor homologado: prefira a cotação deles.
+        </p>
         <div className={grade}>
           <Campo label="Enxoval, mobília e itens mínimos" valor={enxoval} onChange={setEnxoval} preencher={dados.implantacao.mobilia_e_enxoval_estimado === null} />
           <Campo label="Outros (cópias de chave, 1ª limpeza)" valor={outros} onChange={setOutros} />
